@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Avro Encoder/Decoder</title>
+    <link rel="stylesheet" href="https://unpkg.com/mvp.css" />
+    <style>
+      :root {
+        --width-card: 300px;
+        --width-card-medium: 460px;
+        --width-card-wide: 1200px;
+        --width-content: 1200px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Avro Encoder/Decoder</h1>
+      <p>Encode and decode data using Avro schemas</p>
+    </header>
+
+    <main>
+      <form id="avroForm">
+        <label for="schema">Avro Schema (JSON):</label>
+        <textarea
+          id="schema"
+          rows="15"
+          placeholder='{"type": "record", "name": "User", "fields": [{"name": "name", "type": "string"}, {"name": "age", "type": "int"}]}'
+        >
+{
+  "type": "record",
+  "name": "User",
+  "fields": [
+    {
+      "name": "name",
+      "type": "string"
+    },
+    {
+      "name": "age",
+      "type": "int"
+    }
+  ]
+}
+        </textarea>
+
+        <label for="input">Input Data:</label>
+        <textarea id="input" rows="15" placeholder="Enter data here">
+{
+  "name": "John",
+  "age": 30
+}
+</textarea
+        >
+
+        <div>
+          <label>Direction:</label>
+          <input type="radio" name="operation" id="direction-encode" value="encode" checked />
+          <label for="direction-encode">Encode</label>
+          <input type="radio" name="operation" id="direction-decode" value="decode" />
+          <label for="direction-decode">Decode</label>
+        </div>
+
+        <button type="submit">Process</button>
+
+        <div id="error" style="color: red; margin-top: 10px"></div>
+
+        <label for="output">Output:</label>
+        <textarea id="output" rows="15" readonly></textarea>
+      </form>
+    </main>
+    <script type="module">
+      import avro from "./avsc.js";
+      // Utility functions
+      function bufferToHex(bytes) {
+        return bytes.reduce((str, byte) => str + byte.toString(16).padStart(2, "0"), "");
+      }
+
+      function hexToBuffer(hex) {
+        hex = hex.substring(0, 2) === "0x" ? hex.substring(2) : hex;
+        return Uint8Array.from(hex.match(/.{2}/g).map((byte) => parseInt(byte, 16)));
+      }
+
+      function clearError() {
+        document.getElementById("error").textContent = "";
+      }
+
+      function updatePlaceholders() {
+        const operation = document.querySelector('input[name="operation"]:checked').value;
+        const inputElement = document.getElementById("input");
+        const outputLabel = document.querySelector('label[for="output"]');
+
+        if (operation === "encode") {
+          inputElement.placeholder = '{"name": "John", "age": 30}';
+          outputLabel.textContent = "Output (Hex):";
+        } else {
+          inputElement.placeholder = "Enter hex string here";
+          outputLabel.textContent = "Output (JSON):";
+        }
+      }
+
+      // Update placeholders when operation changes
+      document.querySelectorAll('input[name="operation"]').forEach((radio) => {
+        radio.addEventListener("change", updatePlaceholders);
+      });
+
+      // Form submission
+      document.getElementById("avroForm").addEventListener("submit", (e) => {
+        e.preventDefault();
+
+        // Clear previous error
+        clearError();
+
+        const operation = document.querySelector('input[name="operation"]:checked').value;
+        const schemaText = document.getElementById("schema").value.trim();
+        const inputText = document.getElementById("input").value.trim();
+        const outputElement = document.getElementById("output");
+
+        try {
+          // Parse schema
+          const schema = JSON.parse(schemaText);
+
+          // Create Avro type from schema
+          const type = avro.Type.forSchema(schema);
+
+          if (operation === "encode") {
+            // Parse input data
+            const data = JSON.parse(inputText);
+            // Encode the data
+            const encoded = type.toBuffer(data);
+            // Convert to hex string
+            const hexString = bufferToHex(encoded);
+            outputElement.value = `0x${hexString}`;
+          } else {
+            // Decode operation
+            const buffer = hexToBuffer(inputText);
+            const decoded = type.fromBuffer(buffer);
+            outputElement.value = JSON.stringify(decoded, null, 2);
+          }
+        } catch (error) {
+          console.error(`${operation === "encode" ? "Encoding" : "Decoding"} error`, error);
+          document.getElementById("error").textContent =
+            `${operation === "encode" ? "Encoding" : "Decoding"} error: ${error.message}`;
+        }
+      });
+    </script>
+  </body>
+</html>
