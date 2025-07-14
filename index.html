@@ -85,6 +85,74 @@
         document.getElementById("error").textContent = "";
       }
 
+      function preprocessData(data, type) {
+        if (type.typeName === "record") {
+          const result = {};
+          for (const field of type.fields) {
+            const val = data[field.name];
+            result[field.name] = preprocessData(val, field.type);
+          }
+          return result;
+        }
+
+        if (type.typeName === "array") {
+          return data.map((item) => preprocessData(item, type.itemsType));
+        }
+
+        if (type.typeName === "map") {
+          const result = {};
+          for (const [k, v] of Object.entries(data)) {
+            result[k] = preprocessData(v, type.valuesType);
+          }
+          return result;
+        }
+
+        if (type.typeName === "union") {
+          const matchingType = type.types.find((t) => t.isValid(data));
+          return preprocessData(data, matchingType);
+        }
+
+        if (type.typeName === "bytes" && typeof data === "string") {
+          return hexToBuffer(data);
+        }
+
+        return data;
+      }
+
+      function postprocessData(data, type) {
+        if (type.typeName === "record") {
+          const result = {};
+          for (const field of type.fields) {
+            const val = data[field.name];
+            result[field.name] = postprocessData(val, field.type);
+          }
+          return result;
+        }
+
+        if (type.typeName === "array") {
+          return data.map((item) => postprocessData(item, type.itemsType));
+        }
+
+        if (type.typeName === "map") {
+          const result = {};
+          for (const [k, v] of Object.entries(data)) {
+            result[k] = postprocessData(v, type.valuesType);
+          }
+          return result;
+        }
+
+        if (type.typeName === "union") {
+          const matchingType = type.types.find((t) => t.isValid(data));
+          return postprocessData(data, matchingType);
+        }
+
+        if (type.typeName === "bytes" && data instanceof Uint8Array) {
+          return `0x${bufferToHex(data)}`;
+        }
+
+        return data;
+      }
+
       function updatePlaceholders() {
         const operation = document.querySelector('input[name="operation"]:checked').value;
         const inputElement = document.getElementById("input");
@@ -124,18 +192,16 @@
           const type = avro.Type.forSchema(schema);
 
           if (operation === "encode") {
-            // Parse input data
-            const data = JSON.parse(inputText);
-            // Encode the data
-            const encoded = type.toBuffer(data);
-            // Convert to hex string
+            const rawData = JSON.parse(inputText);
+            const preprocessed = preprocessData(rawData, type);
+            const encoded = type.toBuffer(preprocessed);
             const hexString = bufferToHex(encoded);
             outputElement.value = `0x${hexString}`;
           } else {
-            // Decode operation
             const buffer = hexToBuffer(inputText);
             const decoded = type.fromBuffer(buffer);
-            outputElement.value = JSON.stringify(decoded, null, 2);
+            const postprocessed = postprocessData(decoded, type);
+            outputElement.value = JSON.stringify(postprocessed, null, 2);
           }
         } catch (error) {
           console.error(`${operation === "encode" ? "Encoding" : "Decoding"} error`, error);
